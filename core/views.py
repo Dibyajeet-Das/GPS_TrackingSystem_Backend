@@ -25,58 +25,84 @@ from rest_framework_simplejwt.tokens import RefreshToken
 
 logger = logging.getLogger(__name__)
 
-
+#Generally this part helps to handle requests in django
+#This is the controller part (MVC architecture same as spring boot)
 class SignupView(APIView):
     permission_classes = [AllowAny]
 
     def post(self, request):
         serializer = UserCreateSerializer(data=request.data)
+
         if serializer.is_valid():
-            user = serializer.save()
-            token = create_access_token(user)
-            user_data = UserSerializer(user).data
-            return Response({
-                "access_token": token,
-                "token_type": "bearer",
-                "user": user_data
-            }, status=status.HTTP_201_CREATED)
-        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+            try:
+                user = serializer.save()
+                token = create_access_token(user)
+
+                logger.info(f"New user created: {user.id}")
+
+                return Response({
+                    "access_token": token,
+                    "token_type": "bearer",
+                    "user": UserSerializer(user).data
+                }, status=200)
+
+            except Exception as e:
+                logger.error(f"Signup failed: {str(e)}")
+                return Response({"detail": "Something went wrong"}, status=500)
+
+        logger.warning(f"Invalid signup data: {serializer.errors}")
+        return Response(serializer.errors, status=400)
 
 
+
+# User Login Api
 class LoginView(APIView):
     permission_classes = [AllowAny]
 
     def post(self, request):
         serializer = UserLoginSerializer(data=request.data)
-        if not serializer.is_valid():
-            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
-        phone = serializer.validated_data.get('phone')
-        email = serializer.validated_data.get('email')
-        password = serializer.validated_data['password']
+        if not serializer.is_valid():
+            logger.warning("Login validation failed")
+            return Response(
+                {"error": serializer.errors},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        data = serializer.validated_data
 
         try:
-            if phone:
-                user = User.objects.get(phone=phone)
-            elif email:
-                user = User.objects.get(email=email)
-            else:
-                return Response({"detail": "Phone or email required"}, status=400)
-        except User.DoesNotExist:
-            return Response({"detail": "Invalid credentials"}, status=401)
+            user, result = AuthService.authenticate_user(
+                phone=data.get("phone"),
+                email=data.get("email"),
+                password=data.get("password"),
+            )
 
-        if not check_password(password, user.password):
-            return Response({"detail": "Invalid credentials"}, status=401)
+            if not user:
+                return Response(
+                    {"error": result},
+                    status=status.HTTP_401_UNAUTHORIZED
+                )
 
-        token = create_access_token(user)
-        user_data = UserSerializer(user).data
+            return Response({
+                "access_token": result,
+                "token_type": "Bearer",
+                "user": UserSerializer(user).data
+            })
 
-        return Response({
-            "access_token": token,
-            "token_type": "bearer",
-            "user": user_data
-        })
+        except ValueError as e:
+            logger.warning(str(e))
+            return Response(
+                {"error": str(e)},
+                status=status.HTTP_400_BAD_REQUEST
+            )
 
+        except Exception as e:
+            logger.exception("Login API crashed")
+            return Response(
+                {"error": "Internal server error"},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
 
 class MeView(APIView):
     permission_classes = [IsAuthenticated]

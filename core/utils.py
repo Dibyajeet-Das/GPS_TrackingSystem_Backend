@@ -41,6 +41,8 @@ def calculate_eta(distance_km: float, speed_kmh: float) -> float:
     return (distance_km / speed_kmh) * 60
 
 # Custom JWT creation (if you want to match exactly the old format)
+# This is the part where we create the JWT token for authentication and authorization
+# when the clinet does the login here
 def create_access_token(user: User):
     token = AccessToken.for_user(user)
     token['user_id'] = str(user.id)
